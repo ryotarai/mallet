@@ -86,6 +86,9 @@ func (p *PF) pfctl(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	p.logger.Debug().Strs("args", c.Args).Msg("Running pfctl")
 	if err := c.Run(); err != nil {
+		if eerr, ok := err.(*exec.ExitError); ok {
+			p.logger.Debug().Str("stderr", string(eerr.Stderr)).Msg("pfctl failed")
+		}
 		return err
 	}
 
@@ -101,9 +104,10 @@ func (p *PF) loadAnchorRules(proxyPort int, subnets []string) error {
 
 	for _, subnet := range subnets {
 		fmt.Fprintf(buf, "rdr pass on lo0 inet proto tcp from ! 127.0.0.1 to %s -> 127.0.0.1 port %d\n", subnet, proxyPort)
+	}
+	for _, subnet := range subnets {
 		fmt.Fprintf(buf, "pass out route-to lo0 inet proto tcp from any to %s flags S/SA keep state\n", subnet)
 	}
-	fmt.Fprintf(buf, "pass out inet proto tcp from any to 127.0.0.1 flags S/SA keep state\n")
 
 	p.logger.Debug().Str("rules", buf.String()).Msg("Loading pf rules")
 

@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 )
 
@@ -63,6 +64,8 @@ func (p *Proxy) Start(port int) error {
 }
 
 func (p *Proxy) handleConn(conn *net.TCPConn) error {
+	defer conn.Close()
+
 	dest, newConn, err := p.nat.GetNATDestination(conn)
 	if err != nil {
 		return err
@@ -87,34 +90,36 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 		return err
 	}
 
-	stopCh1 := make(chan struct{})
-	stopCh2 := make(chan struct{})
+	var wg sync.WaitGroup
 
+	wg.Add(1)
 	go func() {
-		if err := pipe(p.Logger.With().Str("direction", "local->remote").Logger(), conn, stdinW); err != nil {
-			if err == io.EOF {
-				p.Logger.Debug().Err(err).Msg("EOF on local->remote pipe")
-			} else {
-				p.Logger.Warn().Err(err).Msg("Error on local->remote pipe")
-			}
-			stdoutR.Close() // to stop remote->local pipe
-			close(stopCh1)
+		defer wg.Done()
+
+		if _, err := io.Copy(stdinW, conn); err != nil {
+			p.Logger.Warn().Err(err).Msg("local->remote")
 		}
-	}()
-	go func() {
-		if err := pipe(p.Logger.With().Str("direction", "remote->local").Logger(), stdoutR, conn); err != nil {
-			if err == io.ErrClosedPipe {
-				p.Logger.Debug().Err(err).Msg("Closed pipe on remote->local pipe")
-			} else {
-				p.Logger.Warn().Err(err).Msg("Error on local->remote pipe")
-			}
-			conn.Close() // to stop local->remote pipe
-			close(stopCh2)
-		}
+		p.Logger.Debug().Msg("local->remote copy done")
+		stdoutR.Close()
 	}()
 
-	<-stopCh1
-	<-stopCh2
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if _, err := io.Copy(conn, stdoutR); err != nil {
+			if operr, ok := err.(*net.OpError); ok && operr.Unwrap() == io.ErrClosedPipe {
+				// expected
+				p.Logger.Debug().Err(operr).Msg("closed pipe")
+			} else {
+				p.Logger.Warn().Err(err).Msg("remote->local")
+			}
+		}
+
+		p.Logger.Debug().Msg("remote->local copy done")
+	}()
+
+	wg.Wait()
 
 	p.Logger.Debug().Msg("Stopping chisel-client")
 	if err := chisel.Process.Signal(syscall.SIGTERM); err != nil {
@@ -122,22 +127,4 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 	}
 
 	return nil
-}
-
-func pipe(logger zerolog.Logger, src io.Reader, dst io.Writer) error {
-	buff := make([]byte, 64*1024) // 64 kB
-	for {
-		n, err := src.Read(buff)
-		if err != nil {
-			return err
-		}
-		//logger.Trace().Int("bytes", n).Msg("read")
-		b := buff[:n]
-
-		n, err = dst.Write(b)
-		if err != nil {
-			return err
-		}
-		//logger.Trace().Int("bytes", n).Msg("write")
-	}
 }
