@@ -10,11 +10,13 @@ go get github.com/ryotarai/mallet
 
 ## Example Usage with SSH
 
+Example situation:
+
 ```
 Laptop --SSH--> a.example.com --> 10.0.0.0/8
 ```
 
-First, install chisel to host A by following https://github.com/jpillora/chisel#install
+First, install chisel to a.example.com by following https://github.com/jpillora/chisel#install
 
 Second, launch chisel server on a.example.com and forward a port to the server:
 
