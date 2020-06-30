@@ -2,10 +2,12 @@ package nat
 
 import (
 	"fmt"
+	"github.com/mitchellh/go-ps"
 	"github.com/rs/zerolog"
 	"github.com/ryotarai/tagane/pkg/priv"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"syscall"
 )
@@ -18,6 +20,7 @@ type Iptables struct {
 	logger     zerolog.Logger
 	privClient *priv.Client
 	proxyPort  int
+	subnets    []string
 }
 
 func NewIptables(logger zerolog.Logger, privClient *priv.Client, proxyPort int) *Iptables {
@@ -31,23 +34,23 @@ func NewIptables(logger zerolog.Logger, privClient *priv.Client, proxyPort int) 
 func (p *Iptables) Setup() error {
 	chain := p.chainName()
 
-	if err := p.iptables([]string{"-t", "nat", "-N", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-N", chain}); err != nil {
 		return fmt.Errorf("failed to create a chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-F", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-F", chain}); err != nil {
 		return fmt.Errorf("failed to flush a chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-I", "OUTPUT", "1", "-j", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-I", "OUTPUT", "1", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to insert a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-I", "PREROUTING", "1", "-j", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-I", "PREROUTING", "1", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to insert a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-A", chain, "-j", "RETURN", "-m", "addrtype", "--dst-type", "LOCAL"}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-A", chain, "-j", "RETURN", "-m", "addrtype", "--dst-type", "LOCAL"}); err != nil {
 		return fmt.Errorf("failed to add a rule to return dst==local: %w", err)
 	}
 
@@ -57,11 +60,35 @@ func (p *Iptables) Setup() error {
 func (p *Iptables) RedirectSubnets(subnets []string) error {
 	chain := p.chainName()
 
+	currentSubnets := map[string]struct{}{}
+	for _, subnet := range p.subnets {
+		currentSubnets[subnet] = struct{}{}
+	}
+
+	newSubnets := map[string]struct{}{}
 	for _, subnet := range subnets {
-		if err := p.iptables([]string{"-t", "nat", "-A", chain, "-j", "REDIRECT", "--dest", subnet, "-p", "tcp", "--to-ports", strconv.Itoa(p.proxyPort)}); err != nil {
-			return fmt.Errorf("failed to redirect rule for %s: %w", subnet, err)
+		newSubnets[subnet] = struct{}{}
+	}
+
+	// add
+	for subnet := range newSubnets {
+		if _, found := currentSubnets[subnet]; !found {
+			if _, err := p.iptables([]string{"-t", "nat", "-A", chain, "-j", "REDIRECT", "--dest", subnet, "-p", "tcp", "--to-ports", strconv.Itoa(p.proxyPort)}); err != nil {
+				return fmt.Errorf("failed to redirect rule for %s: %w", subnet, err)
+			}
 		}
 	}
+
+	// delete
+	for subnet := range currentSubnets {
+		if _, found := newSubnets[subnet]; !found {
+			if _, err := p.iptables([]string{"-t", "nat", "-D", chain, "-j", "REDIRECT", "--dest", subnet, "-p", "tcp", "--to-ports", strconv.Itoa(p.proxyPort)}); err != nil {
+				return fmt.Errorf("failed to delete redirect rule for %s: %w", subnet, err)
+			}
+		}
+	}
+
+	p.subnets = subnets
 
 	return nil
 }
@@ -69,19 +96,23 @@ func (p *Iptables) RedirectSubnets(subnets []string) error {
 func (p *Iptables) Shutdown() error {
 	chain := p.chainName()
 
-	if err := p.iptables([]string{"-t", "nat", "-D", "OUTPUT", "-j", chain}); err != nil {
+	return p.deleteChain(chain)
+}
+
+func (p *Iptables) deleteChain(chain string) error {
+	if _, err := p.iptables([]string{"-t", "nat", "-D", "OUTPUT", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to delete a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-D", "PREROUTING", "-j", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-D", "PREROUTING", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to delete a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-F", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-F", chain}); err != nil {
 		return fmt.Errorf("failed to flush a chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", "nat", "-X", chain}); err != nil {
+	if _, err := p.iptables([]string{"-t", "nat", "-X", chain}); err != nil {
 		return fmt.Errorf("failed to delete a chain: %w", err)
 	}
 
@@ -122,24 +153,51 @@ func (p *Iptables) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, e
 }
 
 func (p *Iptables) Cleanup() error {
-	return fmt.Errorf("not implemented")
+	re := regexp.MustCompile("tagane-pid(\\d+)")
+
+	stdout, err := p.iptables([]string{"-t", "nat", "-n", "-L"})
+	if err != nil {
+		return err
+	}
+
+	pids := map[int]struct{}{}
+	procs, err := ps.Processes()
+	for _, proc := range procs {
+		pids[proc.Pid()] = struct{}{}
+	}
+
+	for _, match := range re.FindAllStringSubmatch(stdout, -1) {
+		pid, err := strconv.Atoi(match[1])
+		if err != nil {
+			return err
+		}
+
+		if _, ok := pids[pid]; !ok {
+			p.logger.Info().Int("pid", pid).Msg("Deleting zombie iptables chain")
+			if err := p.deleteChain(fmt.Sprintf("tagane-pid%d", pid)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *Iptables) chainName() string {
 	return fmt.Sprintf("tagane-pid%d", os.Getpid())
 }
 
-func (p *Iptables) iptables(args []string) error {
+func (p *Iptables) iptables(args []string) (string, error) {
 	resp, err := p.privClient.Command(&priv.CommandRequest{
 		Command: "iptables",
 		Args:    args,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	if resp.ExitCode != 0 {
-		return fmt.Errorf("iptables exit status: %d", resp.ExitCode)
+		return "", fmt.Errorf("iptables exit status: %d", resp.ExitCode)
 	}
 
-	return nil
+	return resp.Stdout, nil
 }

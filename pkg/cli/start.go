@@ -36,11 +36,6 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger.Debug().Strs("args", args).Msgf("Starting")
 
-			sigCh := make(chan os.Signal)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-			exitCh := make(chan struct{})
-
 			// find port
 			listenPort := startFlags.listenPort
 			if listenPort == 0 {
@@ -55,6 +50,11 @@ func init() {
 			if err := privClient.Start(); err != nil {
 				return err
 			}
+
+			sigCh := make(chan os.Signal)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+			exitCh := make(chan struct{})
 
 			nat, err := nat.New(logger, privClient, listenPort)
 			if err != nil {
