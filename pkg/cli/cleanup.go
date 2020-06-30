@@ -18,7 +18,7 @@ func init() {
 				return err
 			}
 
-			nat, err := nat.New(logger, privClient)
+			nat, err := nat.New(logger, privClient, -1)
 			if err != nil {
 				return err
 			}

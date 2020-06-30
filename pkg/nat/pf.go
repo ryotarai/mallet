@@ -20,16 +20,18 @@ const pfConf = "/etc/pf.conf"
 type PF struct {
 	logger     zerolog.Logger
 	privClient *priv.Client
+	proxyPort  int
 }
 
-func NewPF(logger zerolog.Logger, privClient *priv.Client) *PF {
+func NewPF(logger zerolog.Logger, privClient *priv.Client, proxyPort int) *PF {
 	return &PF{
 		logger:     logger,
 		privClient: privClient,
+		proxyPort:  proxyPort,
 	}
 }
 
-func (p *PF) Setup(proxyPort int, subnets []string) error {
+func (p *PF) Setup() error {
 	// enable
 	if _, err := p.pfctl([]string{"-E"}, ""); err != nil {
 		return fmt.Errorf("failed to enable pf: %w", err)
@@ -44,9 +46,23 @@ func (p *PF) Setup(proxyPort int, subnets []string) error {
 		return err
 	}
 
-	// load anchor
-	if err := p.loadAnchorRules(proxyPort, subnets); err != nil {
-		return fmt.Errorf("failed to load pf rules: %w", err)
+	return nil
+}
+
+func (p *PF) RedirectSubnets(subnets []string) error {
+	buf := &bytes.Buffer{}
+
+	for _, subnet := range subnets {
+		fmt.Fprintf(buf, "rdr pass on lo0 inet proto tcp from ! 127.0.0.1 to %s -> 127.0.0.1 port %d\n", subnet, p.proxyPort)
+	}
+	for _, subnet := range subnets {
+		fmt.Fprintf(buf, "pass out route-to lo0 inet proto tcp from any to %s flags S/SA keep state\n", subnet)
+	}
+
+	p.logger.Debug().Str("rules", buf.String()).Msg("Loading pf rules")
+
+	if _, err := p.pfctl([]string{"-a", p.anchorName(), "-f", "-"}, buf.String()); err != nil {
+		return err
 	}
 
 	return nil
@@ -133,25 +149,6 @@ func (p *PF) anchorName() string {
 
 func (p *PF) anchorNameForPid(pid int) string {
 	return fmt.Sprintf("tagane/pid%d", pid)
-}
-
-func (p *PF) loadAnchorRules(proxyPort int, subnets []string) error {
-	buf := &bytes.Buffer{}
-
-	for _, subnet := range subnets {
-		fmt.Fprintf(buf, "rdr pass on lo0 inet proto tcp from ! 127.0.0.1 to %s -> 127.0.0.1 port %d\n", subnet, proxyPort)
-	}
-	for _, subnet := range subnets {
-		fmt.Fprintf(buf, "pass out route-to lo0 inet proto tcp from any to %s flags S/SA keep state\n", subnet)
-	}
-
-	p.logger.Debug().Str("rules", buf.String()).Msg("Loading pf rules")
-
-	if _, err := p.pfctl([]string{"-a", p.anchorName(), "-f", "-"}, buf.String()); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (p *PF) generatePfConf() (string, error) {

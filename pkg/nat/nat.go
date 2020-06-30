@@ -9,20 +9,21 @@ import (
 )
 
 type NAT interface {
-	Setup(proxyPort int, subnets []string) error
+	Setup() error
 	GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, error)
 	Shutdown() error
+	RedirectSubnets(subnets []string) error
 	Cleanup() error
 }
 
 var StateNotFoundError = fmt.Errorf("nat state is not found")
 
-func New(logger zerolog.Logger, privClient *priv.Client) (NAT, error) {
+func New(logger zerolog.Logger, privClient *priv.Client, proxyPort int) (NAT, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		return NewPF(logger, privClient), nil
+		return NewPF(logger, privClient, proxyPort), nil
 	case "linux":
-		return NewIptables(logger, privClient), nil
+		return NewIptables(logger, privClient, proxyPort), nil
 	}
 
 	return nil, fmt.Errorf("%s is not supported", runtime.GOOS)

@@ -4,18 +4,21 @@ import (
 	"github.com/ryotarai/tagane/pkg/nat"
 	"github.com/ryotarai/tagane/pkg/priv"
 	"github.com/ryotarai/tagane/pkg/proxy"
+	"github.com/ryotarai/tagane/pkg/resolver"
 	"github.com/spf13/cobra"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 var startFlags struct {
-	chiselServer string
-	listenPort   int
-	subnets      []string
+	chiselServer     string
+	listenPort       int
+	dnsCheckInterval time.Duration
 
 	chiselFingerprint      string
 	chiselAuth             string
@@ -28,32 +31,52 @@ var startFlags struct {
 
 func init() {
 	c := &cobra.Command{
-		Use: "start",
+		Use:  "start",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger.Debug().Strs("subnets", startFlags.subnets).Msgf("Starting")
+			logger.Debug().Strs("args", args).Msgf("Starting")
 
 			sigCh := make(chan os.Signal)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 			exitCh := make(chan struct{})
 
+			// find port
+			listenPort := startFlags.listenPort
+			if listenPort == 0 {
+				port, err := findFreeTCPPort()
+				if err != nil {
+					return err
+				}
+				listenPort = port
+			}
+
 			privClient := priv.NewClient(logger)
 			if err := privClient.Start(); err != nil {
 				return err
 			}
 
-			nat, err := nat.New(logger, privClient)
+			nat, err := nat.New(logger, privClient, listenPort)
 			if err != nil {
 				return err
 			}
 
-			if err := nat.Setup(startFlags.listenPort, startFlags.subnets); err != nil {
+			if err := nat.Cleanup(); err != nil {
 				return err
 			}
 
+			if err := nat.Setup(); err != nil {
+				return err
+			}
+
+			resolver := resolver.New(logger, nat)
+			go func() {
+				resolver.KeepUpdate(startFlags.dnsCheckInterval, args)
+			}()
+
 			prx := proxy.New(logger, nat, startFlags.chiselServer, chiselOptions())
 			go func() {
-				if err := prx.Start(startFlags.listenPort); err != nil {
+				if err := prx.Start(listenPort); err != nil {
 					logger.Error().Err(err).Msg("")
 					close(exitCh)
 				}
@@ -65,6 +88,7 @@ func init() {
 			}
 
 			logger.Info().Msg("Shutting down")
+			resolver.Stop()
 			if err := nat.Shutdown(); err != nil {
 				logger.Warn().Err(err).Msg("Failed to shutdown NAT")
 			}
@@ -74,9 +98,8 @@ func init() {
 	}
 	c.Flags().StringVar(&startFlags.chiselServer, "chisel-server", "", "")
 	c.MarkFlagRequired("chisel-server")
-	c.Flags().IntVar(&startFlags.listenPort, "listen-port", 10000, "")
-	c.Flags().StringArrayVar(&startFlags.subnets, "subnet", nil, "")
-	c.MarkFlagRequired("subnet")
+	c.Flags().IntVar(&startFlags.listenPort, "listen-port", 0, "0 for auto")
+	c.Flags().DurationVar(&startFlags.dnsCheckInterval, "dns-check-interval", time.Minute*5, "")
 
 	// flags for chisel client
 	c.Flags().StringVar(&startFlags.chiselFingerprint, "chisel-fingerprint", "", "")
@@ -102,4 +125,18 @@ func chiselOptions() []string {
 	opts = append(opts, "--hostname", startFlags.chiselHostname)
 
 	return opts
+}
+
+func findFreeTCPPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+
+	if err := l.Close(); err != nil {
+		return 0, err
+	}
+
+	parts := strings.Split(l.Addr().String(), ":")
+	return strconv.Atoi(parts[len(parts)-1])
 }

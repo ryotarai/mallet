@@ -17,7 +17,6 @@ var rootFlags struct {
 var rootCmd = &cobra.Command{
 	Use:           "tagane",
 	SilenceUsage:  true,
-	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if err := setupLogger(); err != nil {
 			return err

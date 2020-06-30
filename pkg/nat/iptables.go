@@ -17,42 +17,49 @@ const (
 type Iptables struct {
 	logger     zerolog.Logger
 	privClient *priv.Client
+	proxyPort  int
 }
 
-func NewIptables(logger zerolog.Logger, privClient *priv.Client) *Iptables {
+func NewIptables(logger zerolog.Logger, privClient *priv.Client, proxyPort int) *Iptables {
 	return &Iptables{
 		logger:     logger,
 		privClient: privClient,
+		proxyPort:  proxyPort,
 	}
 }
 
-func (p *Iptables) Setup(proxyPort int, subnets []string) error {
-	table := "nat"
-	chain := fmt.Sprintf("tagane-pid%d", os.Getpid())
+func (p *Iptables) Setup() error {
+	chain := p.chainName()
 
-	if err := p.iptables([]string{"-t", table, "-N", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-N", chain}); err != nil {
 		return fmt.Errorf("failed to create a chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-F", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-F", chain}); err != nil {
 		return fmt.Errorf("failed to flush a chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-I", "OUTPUT", "1", "-j", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-I", "OUTPUT", "1", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to insert a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-I", "PREROUTING", "1", "-j", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-I", "PREROUTING", "1", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to insert a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-A", chain, "-j", "RETURN", "-m", "addrtype", "--dst-type", "LOCAL"}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-A", chain, "-j", "RETURN", "-m", "addrtype", "--dst-type", "LOCAL"}); err != nil {
 		return fmt.Errorf("failed to add a rule to return dst==local: %w", err)
 	}
 
+	return nil
+}
+
+func (p *Iptables) RedirectSubnets(subnets []string) error {
+	chain := p.chainName()
+
 	for _, subnet := range subnets {
-		if err := p.iptables([]string{"-t", table, "-A", chain, "-j", "REDIRECT", "--dest", subnet, "-p", "tcp", "--to-ports", strconv.Itoa(proxyPort)}); err != nil {
-			return fmt.Errorf("failed to add a rule to return dst==local: %w", err)
+		if err := p.iptables([]string{"-t", "nat", "-A", chain, "-j", "REDIRECT", "--dest", subnet, "-p", "tcp", "--to-ports", strconv.Itoa(p.proxyPort)}); err != nil {
+			return fmt.Errorf("failed to redirect rule for %s: %w", subnet, err)
 		}
 	}
 
@@ -60,22 +67,21 @@ func (p *Iptables) Setup(proxyPort int, subnets []string) error {
 }
 
 func (p *Iptables) Shutdown() error {
-	table := "nat"
-	chain := fmt.Sprintf("tagane-pid%d", os.Getpid())
+	chain := p.chainName()
 
-	if err := p.iptables([]string{"-t", table, "-D", "OUTPUT", "-j", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-D", "OUTPUT", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to delete a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-D", "PREROUTING", "-j", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-D", "PREROUTING", "-j", chain}); err != nil {
 		return fmt.Errorf("failed to delete a jump rule to OUTPUT chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-F", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-F", chain}); err != nil {
 		return fmt.Errorf("failed to flush a chain: %w", err)
 	}
 
-	if err := p.iptables([]string{"-t", table, "-X", chain}); err != nil {
+	if err := p.iptables([]string{"-t", "nat", "-X", chain}); err != nil {
 		return fmt.Errorf("failed to delete a chain: %w", err)
 	}
 
@@ -117,6 +123,10 @@ func (p *Iptables) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, e
 
 func (p *Iptables) Cleanup() error {
 	return fmt.Errorf("not implemented")
+}
+
+func (p *Iptables) chainName() string {
+	return fmt.Sprintf("tagane-pid%d", os.Getpid())
 }
 
 func (p *Iptables) iptables(args []string) error {
