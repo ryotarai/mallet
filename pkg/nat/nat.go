@@ -2,10 +2,11 @@ package nat
 
 import (
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/ryotarai/tagane/pkg/priv"
 	"net"
 	"runtime"
+
+	"github.com/rs/zerolog"
+	"github.com/ryotarai/mallet/pkg/priv"
 )
 
 type NAT interface {

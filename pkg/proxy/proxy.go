@@ -2,15 +2,16 @@ package proxy
 
 import (
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/ryotarai/tagane/pkg/nat"
-	"github.com/ryotarai/tagane/pkg/utils"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
+
+	"github.com/rs/zerolog"
+	"github.com/ryotarai/mallet/pkg/nat"
+	"github.com/ryotarai/mallet/pkg/utils"
 )
 
 type Proxy struct {

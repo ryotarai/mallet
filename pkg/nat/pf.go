@@ -4,17 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/mitchellh/go-ps"
-	"github.com/rs/zerolog"
-	"github.com/ryotarai/tagane/pkg/priv"
 	"net"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mitchellh/go-ps"
+	"github.com/rs/zerolog"
+	"github.com/ryotarai/mallet/pkg/priv"
 )
 
-const pfConfMarker = " # added by tagane"
+const pfConfMarker = " # added by mallet"
 const pfConf = "/etc/pf.conf"
 
 type PF struct {
@@ -96,7 +97,7 @@ func (p *PF) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, error) 
 }
 
 func (p *PF) Cleanup() error {
-	stdout, err := p.pfctl([]string{"-s", "Anchors", "-a", "tagane"}, "")
+	stdout, err := p.pfctl([]string{"-s", "Anchors", "-a", "mallet"}, "")
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func (p *PF) Cleanup() error {
 		pids[proc.Pid()] = struct{}{}
 	}
 
-	re := regexp.MustCompile("tagane/pid(\\d+)")
+	re := regexp.MustCompile("mallet/pid(\\d+)")
 	for _, match := range re.FindAllStringSubmatch(stdout, -1) {
 		pid, err := strconv.Atoi(match[1])
 		if err != nil {
@@ -148,7 +149,7 @@ func (p *PF) anchorName() string {
 }
 
 func (p *PF) anchorNameForPid(pid int) string {
-	return fmt.Sprintf("tagane/pid%d", pid)
+	return fmt.Sprintf("mallet/pid%d", pid)
 }
 
 func (p *PF) generatePfConf() (string, error) {
@@ -166,12 +167,12 @@ func (p *PF) generatePfConf() (string, error) {
 	scanner := bufio.NewScanner(f)
 
 	addRdrAnchor := func() {
-		builder.WriteString(`rdr-anchor "tagane/*"`)
+		builder.WriteString(`rdr-anchor "mallet/*"`)
 		builder.WriteString(pfConfMarker)
 		builder.WriteString("\n")
 	}
 	addAnchor := func() {
-		builder.WriteString(`anchor "tagane/*"`)
+		builder.WriteString(`anchor "mallet/*"`)
 		builder.WriteString(pfConfMarker)
 		builder.WriteString("\n")
 	}

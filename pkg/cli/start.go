@@ -1,11 +1,6 @@
 package cli
 
 import (
-	"github.com/ryotarai/tagane/pkg/nat"
-	"github.com/ryotarai/tagane/pkg/priv"
-	"github.com/ryotarai/tagane/pkg/proxy"
-	"github.com/ryotarai/tagane/pkg/resolver"
-	"github.com/spf13/cobra"
 	"net"
 	"os"
 	"os/signal"
@@ -13,6 +8,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/ryotarai/mallet/pkg/nat"
+	"github.com/ryotarai/mallet/pkg/priv"
+	"github.com/ryotarai/mallet/pkg/proxy"
+	"github.com/ryotarai/mallet/pkg/resolver"
+	"github.com/spf13/cobra"
 )
 
 var startFlags struct {

@@ -2,12 +2,13 @@ package resolver
 
 import (
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/ryotarai/tagane/pkg/nat"
 	"net"
 	"regexp"
 	"sort"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/ryotarai/mallet/pkg/nat"
 )
 
 type Resolver struct {

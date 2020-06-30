@@ -1,4 +1,4 @@
-module github.com/ryotarai/tagane
+module github.com/ryotarai/mallet
 
 go 1.14
 

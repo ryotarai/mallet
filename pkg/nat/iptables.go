@@ -2,14 +2,15 @@ package nat
 
 import (
 	"fmt"
-	"github.com/mitchellh/go-ps"
-	"github.com/rs/zerolog"
-	"github.com/ryotarai/tagane/pkg/priv"
 	"net"
 	"os"
 	"regexp"
 	"strconv"
 	"syscall"
+
+	"github.com/mitchellh/go-ps"
+	"github.com/rs/zerolog"
+	"github.com/ryotarai/mallet/pkg/priv"
 )
 
 const (
@@ -153,7 +154,7 @@ func (p *Iptables) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, e
 }
 
 func (p *Iptables) Cleanup() error {
-	re := regexp.MustCompile("tagane-pid(\\d+)")
+	re := regexp.MustCompile("mallet-pid(\\d+)")
 
 	stdout, err := p.iptables([]string{"-t", "nat", "-n", "-L"})
 	if err != nil {
@@ -174,7 +175,7 @@ func (p *Iptables) Cleanup() error {
 
 		if _, ok := pids[pid]; !ok {
 			p.logger.Info().Int("pid", pid).Msg("Deleting zombie iptables chain")
-			if err := p.deleteChain(fmt.Sprintf("tagane-pid%d", pid)); err != nil {
+			if err := p.deleteChain(fmt.Sprintf("mallet-pid%d", pid)); err != nil {
 				return err
 			}
 		}
@@ -184,7 +185,7 @@ func (p *Iptables) Cleanup() error {
 }
 
 func (p *Iptables) chainName() string {
-	return fmt.Sprintf("tagane-pid%d", os.Getpid())
+	return fmt.Sprintf("mallet-pid%d", os.Getpid())
 }
 
 func (p *Iptables) iptables(args []string) (string, error) {

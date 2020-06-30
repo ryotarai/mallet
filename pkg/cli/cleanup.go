@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"github.com/ryotarai/tagane/pkg/nat"
-	"github.com/ryotarai/tagane/pkg/priv"
+	"github.com/ryotarai/mallet/pkg/nat"
+	"github.com/ryotarai/mallet/pkg/priv"
 	"github.com/spf13/cobra"
 )
 

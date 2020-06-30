@@ -1,11 +1,12 @@
 package cli
 
 import (
-	"github.com/ryotarai/tagane/pkg/priv"
-	"github.com/spf13/cobra"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/ryotarai/mallet/pkg/priv"
+	"github.com/spf13/cobra"
 )
 
 func init() {

@@ -1,10 +1,11 @@
 package cli
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
 	"os"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 )
 
 var logger zerolog.Logger
@@ -15,8 +16,8 @@ var rootFlags struct {
 }
 
 var rootCmd = &cobra.Command{
-	Use:           "tagane",
-	SilenceUsage:  true,
+	Use:          "mallet",
+	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if err := setupLogger(); err != nil {
 			return err
