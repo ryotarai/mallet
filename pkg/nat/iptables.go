@@ -3,9 +3,9 @@ package nat
 import (
 	"fmt"
 	"github.com/rs/zerolog"
+	"github.com/ryotarai/tagane/pkg/priv"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"syscall"
 )
@@ -15,12 +15,14 @@ const (
 )
 
 type Iptables struct {
-	logger zerolog.Logger
+	logger     zerolog.Logger
+	privClient *priv.Client
 }
 
-func NewIptables(logger zerolog.Logger) *Iptables {
+func NewIptables(logger zerolog.Logger, privClient *priv.Client) *Iptables {
 	return &Iptables{
-		logger: logger,
+		logger:     logger,
+		privClient: privClient,
 	}
 }
 
@@ -113,8 +115,21 @@ func (p *Iptables) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, e
 	return dest, newTCPConn, nil
 }
 
+func (p *Iptables) Cleanup() error {
+	return fmt.Errorf("not implemented")
+}
+
 func (p *Iptables) iptables(args []string) error {
-	c := exec.Command("iptables", args...)
-	p.logger.Debug().Strs("args", c.Args).Msg("Running iptables command")
-	return c.Run()
+	resp, err := p.privClient.Command(&priv.CommandRequest{
+		Command: "iptables",
+		Args:    args,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.ExitCode != 0 {
+		return fmt.Errorf("iptables exit status: %d", resp.ExitCode)
+	}
+
+	return nil
 }

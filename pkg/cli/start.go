@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/ryotarai/tagane/pkg/priv"
 	"github.com/spf13/cobra"
 	"github.com/ryotarai/tagane/pkg/nat"
 	"github.com/ryotarai/tagane/pkg/proxy"
@@ -22,11 +23,16 @@ func init() {
 			logger.Debug().Strs("subnets", startFlags.subnets).Msgf("Starting")
 
 			sigCh := make(chan os.Signal)
-			signal.Notify(sigCh, syscall.SIGINT)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 			exitCh := make(chan struct{})
 
-			nat, err := nat.New(logger)
+			privClient := priv.NewClient(logger)
+			if err := privClient.Start(); err != nil {
+				return err
+			}
+
+			nat, err := nat.New(logger, privClient)
 			if err != nil {
 				return err
 			}

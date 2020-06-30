@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/mitchellh/go-ps"
 	"github.com/rs/zerolog"
-	"io"
+	"github.com/ryotarai/tagane/pkg/priv"
 	"net"
 	"os"
-	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -17,18 +18,20 @@ const pfConfMarker = " # added by tagane"
 const pfConf = "/etc/pf.conf"
 
 type PF struct {
-	logger zerolog.Logger
+	logger     zerolog.Logger
+	privClient *priv.Client
 }
 
-func NewPF(logger zerolog.Logger) *PF {
+func NewPF(logger zerolog.Logger, privClient *priv.Client) *PF {
 	return &PF{
-		logger: logger,
+		logger:     logger,
+		privClient: privClient,
 	}
 }
 
 func (p *PF) Setup(proxyPort int, subnets []string) error {
 	// enable
-	if err := p.pfctl([]string{"-E"}, nil, nil); err != nil {
+	if _, err := p.pfctl([]string{"-E"}, ""); err != nil {
 		return fmt.Errorf("failed to enable pf: %w", err)
 	}
 
@@ -37,7 +40,7 @@ func (p *PF) Setup(proxyPort int, subnets []string) error {
 		return err
 	}
 
-	if err := p.pfctl([]string{"-f", pfConf}, nil, nil); err != nil {
+	if _, err := p.pfctl([]string{"-f", pfConf}, ""); err != nil {
 		return err
 	}
 
@@ -50,17 +53,17 @@ func (p *PF) Setup(proxyPort int, subnets []string) error {
 }
 
 func (p *PF) Shutdown() error {
-	return p.pfctl([]string{"-F", "all", "-a", p.anchorName()}, nil, nil)
+	_, err := p.pfctl([]string{"-F", "all", "-a", p.anchorName()}, "")
+	return err
 }
 
 func (p *PF) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, error) {
-	stdout := &bytes.Buffer{}
-
-	if err := p.pfctl([]string{"-s", "states"}, nil, stdout); err != nil {
+	stdout, err := p.pfctl([]string{"-s", "states"}, "")
+	if err != nil {
 		return "", nil, err
 	}
 
-	p.logger.Trace().Str("states", stdout.String()).Msg("Output of pfctl -s states")
+	p.logger.Trace().Str("states", stdout).Msg("Output of pfctl -s states")
 
 	re, err := regexp.Compile(fmt.Sprintf("(?m)^ALL tcp %s -> ([^\\s]+).+$", regexp.QuoteMeta(conn.RemoteAddr().String())))
 	if err != nil {
@@ -69,34 +72,67 @@ func (p *PF) GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, error) 
 
 	p.logger.Trace().Str("re", re.String()).Msg("Finding state")
 
-	if match := re.FindStringSubmatch(stdout.String()); match != nil {
+	if match := re.FindStringSubmatch(stdout); match != nil {
 		return match[1], conn, nil
 	}
 
 	return "", nil, StateNotFoundError
 }
 
-func (p *PF) pfctl(args []string, stdin io.Reader, stdout io.Writer) error {
-	c := exec.Command("pfctl", args...)
-	if stdin != nil {
-		c.Stdin = stdin
-	}
-	if stdout != nil {
-		c.Stdout = stdout
-	}
-	p.logger.Debug().Strs("args", c.Args).Msg("Running pfctl")
-	if err := c.Run(); err != nil {
-		if eerr, ok := err.(*exec.ExitError); ok {
-			p.logger.Debug().Str("stderr", string(eerr.Stderr)).Msg("pfctl failed")
-		}
+func (p *PF) Cleanup() error {
+	stdout, err := p.pfctl([]string{"-s", "Anchors", "-a", "tagane"}, "")
+	if err != nil {
 		return err
+	}
+
+	pids := map[int]struct{}{}
+	procs, err := ps.Processes()
+	for _, proc := range procs {
+		pids[proc.Pid()] = struct{}{}
+	}
+
+	re := regexp.MustCompile("tagane/pid(\\d+)")
+	for _, match := range re.FindAllStringSubmatch(stdout, -1) {
+		pid, err := strconv.Atoi(match[1])
+		if err != nil {
+			return err
+		}
+
+		if _, ok := pids[pid]; !ok {
+			p.logger.Info().Int("pid", pid).Msg("Deleting zombie pf anchor")
+			if _, err := p.pfctl([]string{"-F", "all", "-a", p.anchorNameForPid(pid)}, ""); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
 }
 
+func (p *PF) pfctl(args []string, stdin string) (string, error) {
+	resp, err := p.privClient.Command(&priv.CommandRequest{
+		Command: "pfctl",
+		Args:    args,
+		Stdin:   stdin,
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if resp.ExitCode != 0 {
+		return "", fmt.Errorf("pfctl exit status: %d", resp.ExitCode)
+	}
+
+	return resp.Stdout, nil
+}
+
 func (p *PF) anchorName() string {
-	return fmt.Sprintf("tagane/pid%d", os.Getpid())
+	return p.anchorNameForPid(os.Getpid())
+}
+
+func (p *PF) anchorNameForPid(pid int) string {
+	return fmt.Sprintf("tagane/pid%d", pid)
 }
 
 func (p *PF) loadAnchorRules(proxyPort int, subnets []string) error {
@@ -111,7 +147,7 @@ func (p *PF) loadAnchorRules(proxyPort int, subnets []string) error {
 
 	p.logger.Debug().Str("rules", buf.String()).Msg("Loading pf rules")
 
-	if err := p.pfctl([]string{"-a", p.anchorName(), "-f", "-"}, buf, nil); err != nil {
+	if _, err := p.pfctl([]string{"-a", p.anchorName(), "-f", "-"}, buf.String()); err != nil {
 		return err
 	}
 
@@ -174,25 +210,20 @@ func (p *PF) generatePfConf() (string, error) {
 }
 
 func (p *PF) writeMainRules() error {
-	f, err := os.OpenFile(fmt.Sprintf("%s.tmp", pfConf), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
 	content, err := p.generatePfConf()
 	if err != nil {
 		return err
 	}
 
-	if _, err := f.WriteString(content); err != nil {
+	resp, err := p.privClient.WritePfConf(&priv.WritePfConfRequest{
+		Content: content,
+	})
+	if err != nil {
 		return err
 	}
 
-	f.Close()
-
-	if err := os.Rename(fmt.Sprintf("%s.tmp", pfConf), pfConf); err != nil {
-		return err
+	if resp.Error != "" {
+		return fmt.Errorf(resp.Error)
 	}
 
 	return nil
