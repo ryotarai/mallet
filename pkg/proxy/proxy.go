@@ -14,16 +14,18 @@ import (
 )
 
 type Proxy struct {
-	Logger       zerolog.Logger
-	nat          nat.NAT
-	chiselServer string
+	Logger        zerolog.Logger
+	nat           nat.NAT
+	chiselServer  string
+	chiselOptions []string
 }
 
-func New(logger zerolog.Logger, nat nat.NAT, chiselServer string) *Proxy {
+func New(logger zerolog.Logger, nat nat.NAT, chiselServer string, chiselOptions []string) *Proxy {
 	return &Proxy{
-		Logger:       logger.With().Str("component", "proxy").Logger(),
-		nat:          nat,
-		chiselServer: chiselServer,
+		Logger:        logger.With().Str("component", "proxy").Logger(),
+		nat:           nat,
+		chiselServer:  chiselServer,
+		chiselOptions: chiselOptions,
 	}
 }
 
@@ -82,7 +84,14 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 		return err
 	}
 
-	chisel := exec.Command(self, "chisel-client", p.chiselServer, fmt.Sprintf("stdio:%s", dest))
+	var args []string
+	args = append(args, "chisel-client")
+	args = append(args, p.chiselOptions...)
+	args = append(args, p.chiselServer, fmt.Sprintf("stdio:%s", dest))
+
+	p.Logger.Debug().Strs("args", args).Msg("Starting chisel client")
+
+	chisel := exec.Command(self, args...)
 	chisel.Stdin = stdinR
 	chisel.Stdout = stdoutW
 	chisel.Stderr = &utils.LoggerWriter{Logger: p.Logger.With().Str("from", "chisel-client").Logger(), Level: zerolog.DebugLevel}
