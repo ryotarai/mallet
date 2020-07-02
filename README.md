@@ -106,7 +106,6 @@ avg latency
 
 - 3 c5.large instances (Amazon EC2)
     - All traffic is in VPC.
-
 - Mallet v0.0.2 (ulimit -n 2048)
 - Chisel v1.6.0
 - sshuttle v1.0.2
