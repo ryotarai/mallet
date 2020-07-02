@@ -130,7 +130,7 @@ func (p *PF) pfctl(args []string, stdin string) (string, error) {
 	cmd.Stdout = stdout
 	cmd.Stdin = strings.NewReader(stdin)
 	if err := cmd.Run(); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to run %s: %w", cmd.String(), err)
 	}
 	return stdout.String(), nil
 }

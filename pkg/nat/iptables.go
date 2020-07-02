@@ -192,7 +192,7 @@ func (p *Iptables) iptables(args []string) (string, error) {
 	cmd := exec.Command("iptables", args...)
 	cmd.Stdout = stdout
 	if err := cmd.Run(); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to run %s: %w", cmd.String(), err)
 	}
 	return stdout.String(), nil
 }
