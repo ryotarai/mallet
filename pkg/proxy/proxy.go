@@ -35,7 +35,11 @@ func (p *Proxy) Start(port int) error {
 	}
 	p.chiselClient = c
 
-	p.chiselClient.Logger.Debug = true
+	logLevel := p.Logger.GetLevel()
+	if logLevel == zerolog.DebugLevel || logLevel == zerolog.TraceLevel {
+		p.chiselClient.Logger.Debug = true
+	}
+
 	if err := p.chiselClient.Start(context.TODO()); err != nil {
 		return err
 	}
