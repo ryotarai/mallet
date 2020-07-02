@@ -10,7 +10,7 @@ builds:
     ldflags:
       - -s -w
       - -X github.com/jpillora/chisel/share.BuildVersion=1.6.0
-      - -X github.com/ryotarai/mallet/pkg/version.Version=0.0.1
+      - -X github.com/ryotarai/mallet/pkg/version.Version={{.Version}}
     env:
       - CGO_ENABLED=0
 archives:
