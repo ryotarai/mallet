@@ -38,6 +38,11 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger.Debug().Strs("args", args).Msgf("Starting")
 
+			// check user is root
+			if os.Getegid() != 0 {
+				logger.Warn().Msg("Mallet requires root privilege to redirect packets")
+			}
+
 			// find port
 			listenPort := startFlags.listenPort
 			if listenPort == 0 {
@@ -68,7 +73,7 @@ func init() {
 
 			resolver := resolver.New(logger, nat)
 			go func() {
-				resolver.KeepUpdate(startFlags.dnsCheckInterval, args)
+				resolver.Start(startFlags.dnsCheckInterval, args)
 			}()
 
 			chiselHeaders := http.Header{}

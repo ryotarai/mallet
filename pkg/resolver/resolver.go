@@ -37,7 +37,7 @@ func (r *Resolver) Stop() {
 	<-r.stoppedCh
 }
 
-func (r *Resolver) KeepUpdate(interval time.Duration, targets []string) {
+func (r *Resolver) Start(interval time.Duration, targets []string) {
 	if err := r.update(targets); err != nil {
 		r.logger.Warn().Err(err).Msg("Failed to update subnets")
 	}
