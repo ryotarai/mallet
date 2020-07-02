@@ -1,0 +1,28 @@
+project_name: mallet
+env:
+  - GO111MODULE=on
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - main: .
+    binary: mallet
+    ldflags:
+      - -s -w
+      - -X github.com/jpillora/chisel/share.BuildVersion=1.6.0
+      - -X github.com/ryotarai/mallet/pkg/version.Version=0.0.1
+    env:
+      - CGO_ENABLED=0
+archives:
+  - name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    replacements:
+      darwin: darwin
+      linux: linux
+      windows: windows
+      386: i386
+      amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
+release:
+  prerelease: auto
