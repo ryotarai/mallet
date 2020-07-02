@@ -1,7 +1,9 @@
 package cli
 
 import (
+	chclient "github.com/jpillora/chisel/client"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -75,7 +77,22 @@ func init() {
 				resolver.KeepUpdate(startFlags.dnsCheckInterval, args)
 			}()
 
-			prx := proxy.New(logger, nat, startFlags.chiselServer, chiselOptions())
+			chiselHeaders := http.Header{}
+			if startFlags.chiselHostname != "" {
+				chiselHeaders["Host"] = []string{startFlags.chiselHostname}
+			}
+			chiselConfig := &chclient.Config{
+				Fingerprint:      startFlags.chiselFingerprint,
+				Auth:             startFlags.chiselAuth,
+				KeepAlive:        startFlags.chiselKeepalive,
+				MaxRetryCount:    startFlags.chiselMaxRetryCount,
+				MaxRetryInterval: startFlags.chiselMaxRetryInterval,
+				Server:           startFlags.chiselServer,
+				Proxy:            startFlags.chiselProxy,
+				Headers:          chiselHeaders,
+			}
+
+			prx := proxy.New(logger, nat, chiselConfig)
 			go func() {
 				if err := prx.Start(listenPort); err != nil {
 					logger.Error().Err(err).Msg("")
@@ -112,20 +129,6 @@ func init() {
 	c.Flags().StringVar(&startFlags.chiselHostname, "chisel-hostname", "", "")
 
 	rootCmd.AddCommand(c)
-}
-
-func chiselOptions() []string {
-	var opts []string
-
-	opts = append(opts, "--fingerprint", startFlags.chiselFingerprint)
-	opts = append(opts, "--auth", startFlags.chiselAuth)
-	opts = append(opts, "--keepalive", startFlags.chiselKeepalive.String())
-	opts = append(opts, "--max-retry-count", strconv.Itoa(startFlags.chiselMaxRetryCount))
-	opts = append(opts, "--max-retry-interval", startFlags.chiselMaxRetryInterval.String())
-	opts = append(opts, "--proxy", startFlags.chiselProxy)
-	opts = append(opts, "--hostname", startFlags.chiselHostname)
-
-	return opts
 }
 
 func findFreeTCPPort() (int, error) {
