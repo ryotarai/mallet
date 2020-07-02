@@ -45,5 +45,4 @@ Now, all TCP traffic to 10.0.0.0/8 is forwarded via a.example.com.
 
 ## TODO
 
-- Embed chisel client to reduce latency
 - IPv6 support
