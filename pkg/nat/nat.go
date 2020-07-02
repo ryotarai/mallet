@@ -6,7 +6,6 @@ import (
 	"runtime"
 
 	"github.com/rs/zerolog"
-	"github.com/ryotarai/mallet/pkg/priv"
 )
 
 type NAT interface {
@@ -19,12 +18,12 @@ type NAT interface {
 
 var StateNotFoundError = fmt.Errorf("nat state is not found")
 
-func New(logger zerolog.Logger, privClient *priv.Client, proxyPort int) (NAT, error) {
+func New(logger zerolog.Logger, proxyPort int) (NAT, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		return NewPF(logger, privClient, proxyPort), nil
+		return NewPF(logger, proxyPort), nil
 	case "linux":
-		return NewIptables(logger, privClient, proxyPort), nil
+		return NewIptables(logger, proxyPort), nil
 	}
 
 	return nil, fmt.Errorf("%s is not supported", runtime.GOOS)

@@ -1,16 +1,17 @@
 package nat
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"syscall"
 
 	"github.com/mitchellh/go-ps"
 	"github.com/rs/zerolog"
-	"github.com/ryotarai/mallet/pkg/priv"
 )
 
 const (
@@ -18,17 +19,15 @@ const (
 )
 
 type Iptables struct {
-	logger     zerolog.Logger
-	privClient *priv.Client
-	proxyPort  int
-	subnets    []string
+	logger    zerolog.Logger
+	proxyPort int
+	subnets   []string
 }
 
-func NewIptables(logger zerolog.Logger, privClient *priv.Client, proxyPort int) *Iptables {
+func NewIptables(logger zerolog.Logger, proxyPort int) *Iptables {
 	return &Iptables{
-		logger:     logger,
-		privClient: privClient,
-		proxyPort:  proxyPort,
+		logger:    logger,
+		proxyPort: proxyPort,
 	}
 }
 
@@ -189,16 +188,11 @@ func (p *Iptables) chainName() string {
 }
 
 func (p *Iptables) iptables(args []string) (string, error) {
-	resp, err := p.privClient.Command(&priv.CommandRequest{
-		Command: "iptables",
-		Args:    args,
-	})
-	if err != nil {
+	stdout := &bytes.Buffer{}
+	cmd := exec.Command("iptables", args...)
+	cmd.Stdout = stdout
+	if err := cmd.Run(); err != nil {
 		return "", err
 	}
-	if resp.ExitCode != 0 {
-		return "", fmt.Errorf("iptables exit status: %d", resp.ExitCode)
-	}
-
-	return resp.Stdout, nil
+	return stdout.String(), nil
 }

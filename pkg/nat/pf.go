@@ -6,29 +6,27 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/mitchellh/go-ps"
 	"github.com/rs/zerolog"
-	"github.com/ryotarai/mallet/pkg/priv"
 )
 
 const pfConfMarker = " # added by mallet"
 const pfConf = "/etc/pf.conf"
 
 type PF struct {
-	logger     zerolog.Logger
-	privClient *priv.Client
-	proxyPort  int
+	logger    zerolog.Logger
+	proxyPort int
 }
 
-func NewPF(logger zerolog.Logger, privClient *priv.Client, proxyPort int) *PF {
+func NewPF(logger zerolog.Logger, proxyPort int) *PF {
 	return &PF{
-		logger:     logger,
-		privClient: privClient,
-		proxyPort:  proxyPort,
+		logger:    logger,
+		proxyPort: proxyPort,
 	}
 }
 
@@ -127,21 +125,14 @@ func (p *PF) Cleanup() error {
 }
 
 func (p *PF) pfctl(args []string, stdin string) (string, error) {
-	resp, err := p.privClient.Command(&priv.CommandRequest{
-		Command: "pfctl",
-		Args:    args,
-		Stdin:   stdin,
-	})
-
-	if err != nil {
+	stdout := &bytes.Buffer{}
+	cmd := exec.Command("pfctl", args...)
+	cmd.Stdout = stdout
+	cmd.Stdin = strings.NewReader(stdin)
+	if err := cmd.Run(); err != nil {
 		return "", err
 	}
-
-	if resp.ExitCode != 0 {
-		return "", fmt.Errorf("pfctl exit status: %d", resp.ExitCode)
-	}
-
-	return resp.Stdout, nil
+	return stdout.String(), nil
 }
 
 func (p *PF) anchorName() string {
@@ -213,15 +204,20 @@ func (p *PF) writeMainRules() error {
 		return err
 	}
 
-	resp, err := p.privClient.WritePfConf(&priv.WritePfConfRequest{
-		Content: content,
-	})
+	f, err := os.OpenFile(fmt.Sprintf("%s.tmp", pfConf), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
-	if resp.Error != "" {
-		return fmt.Errorf(resp.Error)
+	if _, err := f.WriteString(content); err != nil {
+		return err
+	}
+
+	f.Close()
+
+	if err := os.Rename(fmt.Sprintf("%s.tmp", pfConf), pfConf); err != nil {
+		return err
 	}
 
 	return nil

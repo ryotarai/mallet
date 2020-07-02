@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/ryotarai/mallet/pkg/nat"
-	"github.com/ryotarai/mallet/pkg/priv"
 	"github.com/ryotarai/mallet/pkg/proxy"
 	"github.com/ryotarai/mallet/pkg/resolver"
 	"github.com/spf13/cobra"
@@ -49,17 +48,12 @@ func init() {
 				listenPort = port
 			}
 
-			privClient := priv.NewClient(logger)
-			if err := privClient.Start(); err != nil {
-				return err
-			}
-
 			sigCh := make(chan os.Signal)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 			exitCh := make(chan struct{})
 
-			nat, err := nat.New(logger, privClient, listenPort)
+			nat, err := nat.New(logger, listenPort)
 			if err != nil {
 				return err
 			}
