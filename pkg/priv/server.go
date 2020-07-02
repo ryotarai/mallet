@@ -24,20 +24,19 @@ func NewServer(logger zerolog.Logger) *Server {
 func (s *Server) Start() error {
 	var err error
 
-	pipeR := os.Stdin
-	pipeW := os.Stdout
+	pipe := os.Stdout
 
-	fmt.Fprintln(pipeW, "ready1")
-	line, err := bufio.NewReader(pipeR).ReadString('\n')
+	fmt.Fprintln(pipe, "ready1")
+	line, err := bufio.NewReader(pipe).ReadString('\n')
 	if err != nil {
 		return err
 	}
 	if line != "ready2\n" {
 		return fmt.Errorf("not expected str: %s", line)
 	}
-	fmt.Fprintln(pipeW, "ready3")
+	fmt.Fprintln(pipe, "ready3")
 
-	scanner := bufio.NewScanner(pipeR)
+	scanner := bufio.NewScanner(pipe)
 	for scanner.Scan() {
 		parts := strings.SplitN(scanner.Text(), "\t", 2)
 		action := parts[0]
@@ -56,7 +55,7 @@ func (s *Server) Start() error {
 			return err
 		}
 
-		if err := json.NewEncoder(pipeW).Encode(resp); err != nil {
+		if err := json.NewEncoder(pipe).Encode(resp); err != nil {
 			return err
 		}
 	}

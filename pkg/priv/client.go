@@ -10,12 +10,12 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 type Client struct {
 	cmd    *exec.Cmd
-	pipeR  io.Reader
-	pipeW  io.Writer
+	pipe   io.ReadWriter
 	mutex  sync.Mutex
 	logger zerolog.Logger
 }
@@ -33,16 +33,12 @@ func (c *Client) Start() error {
 		return err
 	}
 
-	// client->server
-	r1, w1, err := os.Pipe()
+	fds, err := syscall.Socketpair(syscall.AF_LOCAL, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return err
 	}
-	// server->client
-	r2, w2, err := os.Pipe()
-	if err != nil {
-		return err
-	}
+	f0 := os.NewFile(uintptr(fds[0]), "sock0")
+	f1 := os.NewFile(uintptr(fds[1]), "sock1")
 
 	var args []string
 	if !(os.Geteuid() == 0 && os.Getegid() == 0) {
@@ -51,16 +47,17 @@ func (c *Client) Start() error {
 	args = append(args, self, "priv", "--log-level", c.logger.GetLevel().String())
 
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdout = w2
+	cmd.Stdout = f0
 	cmd.Stderr = os.Stderr
-	cmd.Stdin = r1
+	cmd.Stdin = os.Stdin
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	f0.Close()
 
 	c.cmd = cmd
-	c.pipeR = r2
-	c.pipeW = w1
+	c.pipe = f1
+	// TODO: close f1 on shutdown
 
 	// ping pong
 	line, err := c.readLine()
@@ -71,7 +68,7 @@ func (c *Client) Start() error {
 		return fmt.Errorf("not expected str: %s", line)
 	}
 
-	fmt.Fprintln(c.pipeW, "ready2")
+	fmt.Fprintln(c.pipe, "ready2")
 
 	line, err = c.readLine()
 	if err != nil {
@@ -109,7 +106,7 @@ func (c *Client) action(action string, req interface{}, resp interface{}) error 
 		return err
 	}
 
-	if _, err := fmt.Fprintf(c.pipeW, "%s\t%s\n", action, string(b)); err != nil {
+	if _, err := fmt.Fprintf(c.pipe, "%s\t%s\n", action, string(b)); err != nil {
 		return err
 	}
 
@@ -126,7 +123,7 @@ func (c *Client) action(action string, req interface{}, resp interface{}) error 
 }
 
 func (c *Client) readLine() (string, error) {
-	line, err := bufio.NewReader(c.pipeR).ReadString('\n')
+	line, err := bufio.NewReader(c.pipe).ReadString('\n')
 	if err != nil {
 		return "", err
 	}
