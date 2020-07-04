@@ -2,6 +2,8 @@
 
 Mallet is a TCP tunnel that works like VPN. This depends on [jpillora/chisel](https://github.com/jpillora/chisel) for actual TCP tunneling.
 
+![](_doc/images/overview.png)
+
 ## Installation
 
 Mallet works on:
