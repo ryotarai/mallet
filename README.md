@@ -32,7 +32,7 @@ Laptop --> a.example.com --> 10.0.0.0/8
 First, install chisel to a.example.com by following https://github.com/jpillora/chisel#install and run chisel server:
 
 ```
-a.example.com$ chisel --port 8080
+a.example.com$ chisel server --port 8080
 ```
 (Keep this chisel process running)
 
