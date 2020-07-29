@@ -127,7 +127,7 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 		defer wg.Done()
 
 		if _, err := io.Copy(pipeOutW, conn); err != nil {
-			p.Logger.Warn().Err(err).Msg("local->remote")
+			p.Logger.Debug().Err(err).Msg("error copying data from local to remote")
 		}
 		p.Logger.Debug().Msg("local->remote copy done")
 		pipeInR.Close() // stop remote->local
@@ -138,12 +138,7 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 		defer wg.Done()
 
 		if _, err := io.Copy(conn, pipeInR); err != nil {
-			if operr, ok := err.(*net.OpError); ok && operr.Unwrap() == io.ErrClosedPipe {
-				// expected
-				p.Logger.Debug().Err(operr).Msg("closed pipe")
-			} else {
-				p.Logger.Warn().Err(err).Msg("remote->local")
-			}
+			p.Logger.Debug().Err(err).Msg("error copying data from remote to local")
 		}
 
 		p.Logger.Debug().Msg("remote->local copy done")
