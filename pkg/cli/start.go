@@ -20,6 +20,7 @@ import (
 var startFlags struct {
 	chiselServer     string
 	listenPort       int
+	listenHost       string
 	dnsCheckInterval time.Duration
 
 	chiselFingerprint      string
@@ -93,7 +94,7 @@ func init() {
 
 			prx := proxy.New(logger, nat, chiselConfig)
 			go func() {
-				if err := prx.Start(listenPort); err != nil {
+				if err := prx.Start(startFlags.listenHost, listenPort); err != nil {
 					logger.Error().Err(err).Msg("")
 					close(exitCh)
 				}
@@ -116,6 +117,7 @@ func init() {
 	c.Flags().StringVar(&startFlags.chiselServer, "chisel-server", "", "")
 	c.MarkFlagRequired("chisel-server")
 	c.Flags().IntVar(&startFlags.listenPort, "listen-port", 0, "0 for auto")
+	c.Flags().StringVar(&startFlags.listenHost, "listen-host", "127.0.0.1", "local proxy server listens on")
 	c.Flags().DurationVar(&startFlags.dnsCheckInterval, "dns-check-interval", time.Minute*5, "")
 
 	// flags for chisel client
