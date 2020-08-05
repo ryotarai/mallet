@@ -22,6 +22,7 @@ var startFlags struct {
 	listenPort       int
 	listenHost       string
 	dnsCheckInterval time.Duration
+	excludeSubnets   []string
 
 	chiselFingerprint      string
 	chiselAuth             string
@@ -72,7 +73,7 @@ func init() {
 				return err
 			}
 
-			resolver := resolver.New(logger, nat)
+			resolver := resolver.New(logger, nat, startFlags.excludeSubnets)
 			go func() {
 				resolver.Start(startFlags.dnsCheckInterval, args)
 			}()
@@ -119,6 +120,7 @@ func init() {
 	c.Flags().IntVar(&startFlags.listenPort, "listen-port", 0, "0 for auto")
 	c.Flags().StringVar(&startFlags.listenHost, "listen-host", "127.0.0.1", "local proxy server listens on")
 	c.Flags().DurationVar(&startFlags.dnsCheckInterval, "dns-check-interval", time.Minute*5, "")
+	c.Flags().StringSliceVar(&startFlags.excludeSubnets, "exclude-subnet", nil, "subnets to exclude")
 
 	// flags for chisel client
 	c.Flags().StringVar(&startFlags.chiselFingerprint, "chisel-fingerprint", "", "")

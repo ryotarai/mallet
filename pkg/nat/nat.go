@@ -12,7 +12,7 @@ type NAT interface {
 	Setup() error
 	GetNATDestination(conn *net.TCPConn) (string, *net.TCPConn, error)
 	Shutdown() error
-	RedirectSubnets(subnets []string) error
+	RedirectSubnets(subnets []string, excludes []string) error
 	Cleanup() error
 }
 
