@@ -27,7 +27,7 @@ func New(logger zerolog.Logger, nat nat.NAT, chiselConfig *chclient.Config) *Pro
 	}
 }
 
-func (p *Proxy) Start(port int) error {
+func (p *Proxy) Start(host string, port int) error {
 	// chisel
 	c, err := chclient.NewClient(p.chiselConfig)
 	if err != nil {
@@ -45,7 +45,7 @@ func (p *Proxy) Start(port int) error {
 	}
 
 	// listen
-	addr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
+	addr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return fmt.Errorf("failed to resolve address: %w", err)
 	}
