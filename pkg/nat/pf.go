@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/ryotarai/mallet/pkg/utils"
 	"net"
 	"os"
 	"os/exec"
@@ -48,7 +49,7 @@ func (p *PF) Setup() error {
 	return nil
 }
 
-func (p *PF) RedirectSubnets(subnets []string) error {
+func (p *PF) RedirectSubnets(subnets []string, excludes []string) error {
 	buf := &bytes.Buffer{}
 
 	for _, subnet := range subnets {
@@ -56,6 +57,9 @@ func (p *PF) RedirectSubnets(subnets []string) error {
 	}
 	for _, subnet := range subnets {
 		fmt.Fprintf(buf, "pass out route-to lo0 inet proto tcp from any to %s flags S/SA keep state\n", subnet)
+	}
+	for _, subnet := range excludes {
+		fmt.Fprintf(buf, "pass out inet proto tcp to %s\n", subnet)
 	}
 
 	p.logger.Debug().Str("rules", buf.String()).Msg("Loading pf rules")
@@ -129,7 +133,7 @@ func (p *PF) pfctl(args []string, stdin string) (string, error) {
 	cmd := exec.Command("pfctl", args...)
 	cmd.Stdout = stdout
 	cmd.Stdin = strings.NewReader(stdin)
-	if err := cmd.Run(); err != nil {
+	if err := utils.RunCommand(cmd); err != nil {
 		return "", fmt.Errorf("failed to run %s: %w", cmd.String(), err)
 	}
 	return stdout.String(), nil

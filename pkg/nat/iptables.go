@@ -22,6 +22,7 @@ type Iptables struct {
 	logger    zerolog.Logger
 	proxyPort int
 	subnets   []string
+	excludes  []string
 }
 
 func NewIptables(logger zerolog.Logger, proxyPort int) *Iptables {
@@ -57,8 +58,13 @@ func (p *Iptables) Setup() error {
 	return nil
 }
 
-func (p *Iptables) RedirectSubnets(subnets []string) error {
+func (p *Iptables) RedirectSubnets(subnets []string, excludes []string) error {
 	chain := p.chainName()
+
+	currentExcludes := map[string]struct{}{}
+	for _, subnet := range p.excludes {
+		currentExcludes[subnet] = struct{}{}
+	}
 
 	currentSubnets := map[string]struct{}{}
 	for _, subnet := range p.subnets {
@@ -68,6 +74,15 @@ func (p *Iptables) RedirectSubnets(subnets []string) error {
 	newSubnets := map[string]struct{}{}
 	for _, subnet := range subnets {
 		newSubnets[subnet] = struct{}{}
+	}
+
+	// excluded subnets
+	for _, subnet := range excludes {
+		if _, found := currentExcludes[subnet]; !found {
+			if _, err := p.iptables([]string{"-t", "nat", "-I", chain, "-j", "RETURN", "--dest", subnet, "-p", "tcp"}); err != nil {
+				return fmt.Errorf("failed to add a RETURN rule for %s: %w", subnet, err)
+			}
+		}
 	}
 
 	// add
@@ -88,6 +103,7 @@ func (p *Iptables) RedirectSubnets(subnets []string) error {
 		}
 	}
 
+	p.excludes = excludes
 	p.subnets = subnets
 
 	return nil

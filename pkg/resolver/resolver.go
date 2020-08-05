@@ -12,23 +12,25 @@ import (
 )
 
 type Resolver struct {
-	lastSubnets []string
-	expire      map[string]time.Time
-	logger      zerolog.Logger
-	nat         nat.NAT
-	stopCh      chan struct{}
-	stoppedCh   chan struct{}
+	lastSubnets    []string
+	expire         map[string]time.Time
+	logger         zerolog.Logger
+	nat            nat.NAT
+	stopCh         chan struct{}
+	stoppedCh      chan struct{}
+	excludeSubnets []string
 }
 
 var ipv4Regexp = regexp.MustCompile("\\A\\d+\\.\\d+\\.\\d+\\.\\d+(/\\d+)?\\z")
 
-func New(logger zerolog.Logger, nat nat.NAT) *Resolver {
+func New(logger zerolog.Logger, nat nat.NAT, excludeSubnets []string) *Resolver {
 	return &Resolver{
-		logger:    logger,
-		nat:       nat,
-		expire:    map[string]time.Time{},
-		stopCh:    make(chan struct{}),
-		stoppedCh: make(chan struct{}),
+		logger:         logger,
+		nat:            nat,
+		expire:         map[string]time.Time{},
+		stopCh:         make(chan struct{}),
+		stoppedCh:      make(chan struct{}),
+		excludeSubnets: excludeSubnets,
 	}
 }
 
@@ -104,7 +106,7 @@ func (r *Resolver) update(targets []string) error {
 	sort.Strings(subnets)
 
 	if r.areSubnetsUpdated(subnets) {
-		if err := r.nat.RedirectSubnets(subnets); err != nil {
+		if err := r.nat.RedirectSubnets(subnets, r.excludeSubnets); err != nil {
 			return err
 		}
 	}
