@@ -17,7 +17,7 @@ func RunCommand(cmd *exec.Cmd) error {
 	}
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("%s: %s", strings.TrimSuffix(buf.String(), "\n"))
+		return fmt.Errorf("%s: %s", err, strings.TrimSuffix(buf.String(), "\n"))
 	}
 	return nil
 }
