@@ -3,13 +3,14 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
+	"sync"
+
 	chclient "github.com/jpillora/chisel/client"
 	chshare "github.com/jpillora/chisel/share"
 	"github.com/rs/zerolog"
 	"github.com/ryotarai/mallet/pkg/nat"
-	"io"
-	"net"
-	"sync"
 )
 
 type Proxy struct {
@@ -115,10 +116,10 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 		},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	if err := proxy.Start(ctx); err != nil {
 		return err
 	}
-	defer cancel()
 
 	var wg sync.WaitGroup
 
