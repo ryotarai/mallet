@@ -95,7 +95,11 @@ func (p *Proxy) handleConn(conn *net.TCPConn) error {
 	}
 	conn = newConn
 
-	p.Logger.Debug().Str("src", conn.RemoteAddr().String()).Str("dst", dest).Msg("Starting proxy")
+	srcAddr := ""
+	if addr := conn.RemoteAddr(); addr != nil {
+		srcAddr = addr.String()
+	}
+	p.Logger.Debug().Str("src", srcAddr).Str("dst", dest).Msg("Starting proxy")
 
 	// me -> chisel
 	pipeOutR, pipeOutW := io.Pipe()
