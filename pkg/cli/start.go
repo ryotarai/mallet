@@ -56,7 +56,7 @@ func init() {
 			}
 
 			sigCh := make(chan os.Signal)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
 			exitCh := make(chan struct{})
 
@@ -102,7 +102,8 @@ func init() {
 			}()
 
 			select {
-			case <-sigCh:
+			case sig := <-sigCh:
+				logger.Debug().Str("signal", sig.String()).Msg("Received signal")
 			case <-exitCh:
 			}
 
